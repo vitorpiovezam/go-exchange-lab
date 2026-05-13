@@ -1,0 +1,37 @@
+# Binários Go
+*.exe
+*.dll
+*.so
+*.dylib
+*.out
+
+# Diretórios de build
+bin/
+dist/
+
+# Arquivos de teste Go
+*.test
+*.prof
+*.coverprofile
+
+# Dependências vendorizadas
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# Dados de volumes Docker (se armazenados localmente)
+*-data/
