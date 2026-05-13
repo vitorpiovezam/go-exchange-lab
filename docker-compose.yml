@@ -1,0 +1,213 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  Market Platform — Docker Compose                                   ║
+# ║                                                                      ║
+# ║  Comando único para subir tudo:                                      ║
+# ║    docker compose up --build                                         ║
+# ║                                                                      ║
+# ║  Serviços:                                                           ║
+# ║    • Kafka + Kafka UI           (mensageria pub/sub)                 ║
+# ║    • RabbitMQ                   (fila de trabalho)                   ║
+# ║    • market-api                 (API HTTP + produtor Kafka/Rabbit)   ║
+# ║    • strategy-consumer          (consumidor Kafka)                   ║
+# ║    • order-worker               (consumidor RabbitMQ)                ║
+# ║    • Prometheus + Kafka Exporter(métricas)                           ║
+# ║    • Loki + Promtail            (logs centralizados)                 ║
+# ║    • Grafana                    (dashboards)                         ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+
+services:
+
+  # ┌──────────────────────────────────────────────┐
+  # │  INFRAESTRUTURA DE MENSAGERIA                │
+  # └──────────────────────────────────────────────┘
+
+  # Apache Kafka (modo KRaft — sem Zookeeper)
+  # Tópico usado: "price.updated" — recebe preços simulados do market-api
+  # Listeners:
+  #   PLAINTEXT (porta 9092) → comunicação entre containers Docker
+  #   EXTERNAL  (porta 9094) → acesso a partir da máquina host (localhost:9092)
+  kafka:
+    image: apache/kafka:latest
+    container_name: market-kafka
+    ports:
+      - "9092:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_RETENTION_HOURS: 1
+    healthcheck:
+      test: /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  # RabbitMQ com plugin de management (UI) e prometheus (métricas)
+  # Fila usada: "order.created" — recebe ordens do market-api, consumidas pelo order-worker
+  # UI de gerenciamento: http://localhost:15672 (guest/guest)
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: market-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP — porta do protocolo de mensageria
+      - "15672:15672" # Management UI — interface web de gerenciamento
+      - "15692:15692" # Prometheus metrics — endpoint de métricas
+    volumes:
+      - ./observability/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 20s
+
+  # ┌──────────────────────────────────────────────┐
+  # │  INTERFACES DE GERENCIAMENTO                 │
+  # └──────────────────────────────────────────────┘
+
+  # Kafka UI — interface web para visualizar tópicos, mensagens, consumer groups
+  # Acesso: http://localhost:8081
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: market-kafka-ui
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ┌──────────────────────────────────────────────┐
+  # │  SERVIÇOS DA APLICAÇÃO                       │
+  # └──────────────────────────────────────────────┘
+
+  # market-api — API HTTP + produtor Kafka + publicador RabbitMQ
+  # Endpoints:
+  #   GET  http://localhost:8080/prices/latest  → último preço
+  #   POST http://localhost:8080/orders/market  → criar ordem
+  market-api:
+    build: ./backend/market-api
+    container_name: market-api
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKER: kafka:9092
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  # strategy-consumer — consome preços do Kafka e emite sinais de compra/venda
+  strategy-consumer:
+    build: ./backend/strategy-consumer
+    container_name: strategy-consumer
+    environment:
+      KAFKA_BROKER: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: on-failure
+
+  # order-worker — consome ordens do RabbitMQ e simula execução
+  order-worker:
+    build: ./backend/order-worker
+    container_name: order-worker
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  # ┌──────────────────────────────────────────────┐
+  # │  OBSERVABILIDADE                             │
+  # └──────────────────────────────────────────────┘
+
+  # Prometheus — coleta e armazena métricas de todos os serviços
+  # Acesso: http://localhost:9090
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: market-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+
+  # Loki — agregador de logs (funciona como um "Prometheus para logs")
+  # Recebe logs do Promtail e permite consultas via LogQL no Grafana
+  # Acesso: http://localhost:3100
+  loki:
+    image: grafana/loki:latest
+    container_name: market-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  # Promtail — agente que coleta logs de todos os containers Docker via socket
+  # e envia para o Loki automaticamente (sem precisar configurar cada serviço)
+  promtail:
+    image: grafana/promtail:latest
+    container_name: market-promtail
+    volumes:
+      - ./observability/promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  # Grafana — dashboards e visualização unificada de métricas + logs
+  # Acesso: http://localhost:3000 (admin/admin)
+  # Já vem com datasources (Prometheus + Loki) e dashboard pré-configurados
+  grafana:
+    image: grafana/grafana:latest
+    container_name: market-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
+  # kafka-exporter — exporta métricas do Kafka no formato Prometheus
+  # Métricas: offset por partição, lag de consumer groups, brokers ativos
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: market-kafka-exporter
+    command:
+      - "--kafka.server=kafka:9092"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+# Volumes nomeados — dados persistem entre restarts do docker compose
+volumes:
+  prometheus-data:
+  loki-data:
+  grafana-data:

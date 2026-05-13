@@ -1,0 +1,31 @@
+# Configuração do Promtail — agente que coleta logs dos containers Docker
+# e os envia para o Loki
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+# Envia os logs coletados para o Loki
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Coleta logs de todos os containers Docker automaticamente
+  # usando a API do Docker via socket
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Extrai o nome do container como label "container"
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: "container"
+      # Extrai o stream (stdout/stderr) como label
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: "stream"
+      # Adiciona o nome da imagem como label para facilitar filtragem
+      - source_labels: ["__meta_docker_container_image"]
+        target_label: "image"

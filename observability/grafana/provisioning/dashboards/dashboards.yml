@@ -1,0 +1,14 @@
+# Provisioning automático de dashboards do Grafana
+# O Grafana carrega os JSONs de dashboard do diretório configurado
+apiVersion: 1
+
+providers:
+  - name: "default"
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

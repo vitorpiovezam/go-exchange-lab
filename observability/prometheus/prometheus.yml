@@ -1,0 +1,22 @@
+# Configuração do Prometheus — coleta métricas de todos os serviços a cada 15 segundos
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Métricas do próprio Prometheus (self-monitoring)
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Métricas do Kafka via kafka-exporter
+  # Inclui: mensagens por segundo, lag de consumer groups, partições, etc.
+  - job_name: "kafka"
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+
+  # Métricas do RabbitMQ via plugin rabbitmq_prometheus
+  # Inclui: mensagens na fila, conexões, canais, taxa de publish/consume, etc.
+  - job_name: "rabbitmq"
+    static_configs:
+      - targets: ["rabbitmq:15692"]

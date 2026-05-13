@@ -1,0 +1,340 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "📊 Métricas do Kafka",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Mensagens por segundo (por tópico)",
+      "description": "Taxa de mensagens entrando em cada tópico do Kafka",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "rate(kafka_topic_partition_current_offset{topic!=\"__consumer_offsets\"}[1m])",
+          "legendFormat": "{{ topic }} [partição {{ partition }}]",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 }
+    },
+    {
+      "title": "Consumer Group Lag",
+      "description": "Diferença entre o offset mais recente e o offset do consumer group. Lag alto = consumer não está acompanhando a produção",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "kafka_consumergroup_lag{topic!=\"__consumer_offsets\"}",
+          "legendFormat": "{{ consumergroup }} → {{ topic }} [{{ partition }}]",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 }
+    },
+    {
+      "title": "Partições por tópico",
+      "description": "Número de partições em cada tópico do Kafka",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "count by (topic) (kafka_topic_partition_current_offset{topic!=\"__consumer_offsets\"})",
+          "legendFormat": "{{ topic }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 9 }
+    },
+    {
+      "title": "Consumer Groups ativos",
+      "description": "Quantidade de consumer groups registrados",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "count(count by (consumergroup) (kafka_consumergroup_current_offset))",
+          "legendFormat": "Groups",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "purple", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 9 }
+    },
+    {
+      "title": "📬 Métricas do RabbitMQ",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "collapsed": false
+    },
+    {
+      "title": "Mensagens na fila",
+      "description": "Mensagens prontas para serem consumidas + mensagens não confirmadas (unacked)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "rabbitmq_queue_messages_ready",
+          "legendFormat": "{{ queue }} (prontas)",
+          "refId": "A"
+        },
+        {
+          "expr": "rabbitmq_queue_messages_unacked",
+          "legendFormat": "{{ queue }} (unacked)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "stacking": { "mode": "normal" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 50 },
+              { "color": "red", "value": 200 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 }
+    },
+    {
+      "title": "Taxa de publish / deliver",
+      "description": "Mensagens publicadas vs consumidas por segundo",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "rate(rabbitmq_queue_messages_published_total[1m])",
+          "legendFormat": "{{ queue }} (publish/s)",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(rabbitmq_queue_messages_delivered_total[1m])",
+          "legendFormat": "{{ queue }} (deliver/s)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 15,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 }
+    },
+    {
+      "title": "Conexões RabbitMQ",
+      "description": "Número de conexões AMQP ativas",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "rabbitmq_connections",
+          "legendFormat": "Conexões",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 22 }
+    },
+    {
+      "title": "Canais RabbitMQ",
+      "description": "Número de canais AMQP abertos (cada canal é uma sessão lógica dentro de uma conexão)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "rabbitmq_channels",
+          "legendFormat": "Canais",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 22 }
+    },
+    {
+      "title": "📝 Logs dos Serviços",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "collapsed": false
+    },
+    {
+      "title": "Logs — market-api",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "" },
+      "targets": [
+        {
+          "expr": "{container=\"market-api\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 27 }
+    },
+    {
+      "title": "Logs — strategy-consumer",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "" },
+      "targets": [
+        {
+          "expr": "{container=\"strategy-consumer\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 35 }
+    },
+    {
+      "title": "Logs — order-worker",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "" },
+      "targets": [
+        {
+          "expr": "{container=\"order-worker\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 43 }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["kafka", "rabbitmq", "market"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Market Platform — Visão Geral",
+  "uid": "market-overview",
+  "version": 1
+}

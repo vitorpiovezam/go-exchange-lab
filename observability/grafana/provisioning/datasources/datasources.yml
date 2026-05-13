@@ -1,0 +1,19 @@
+# Provisioning automático de datasources do Grafana
+# Esses datasources ficam disponíveis assim que o Grafana inicia — sem configuração manual
+apiVersion: 1
+
+datasources:
+  # Prometheus — para métricas (Kafka, RabbitMQ, infraestrutura)
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+
+  # Loki — para logs (todos os containers Docker)
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
